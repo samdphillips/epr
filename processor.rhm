@@ -1,0 +1,78 @@
+#lang rhombus/static/and_meta
+
+import:
+  lib("racket/base.rkt") as r
+  rhombus/compat/port
+  rhombus/compat/thread expose thread
+
+def in_lines = r.#{in-lines}
+def in_producer = r.#{in-producer}
+def make_channel = r.#{make-channel}
+def channel_put_evt = r.#{channel-put-evt}
+
+interface OutputConnect:
+  method send_ev(val)
+
+  method send(val):
+    r.sync(send_ev(val))
+
+interface InputConnect:
+  extends: Sequenceable
+  method recv_ev()
+
+  method recv():
+    r.sync(recv_ev())
+
+  override method to_sequence():
+    in_producer(fun (): recv())
+ 
+annot.macro 'Channel':
+  annot_meta.pack_predicate('r.#{channel?}')
+
+class ChannelInputConnect(~channel: ch :: Channel):
+  implements: InputConnect
+
+  override method recv_ev():
+    ch
+
+class ChannelOutputConnect(~channel: ch :: Channel):
+  implements: OutputConnect
+
+  override method send_ev(val):
+    channel_put_evt(ch, val)
+
+class PortSource(~input_port: inp = current_input_port() :: port.InputPort,
+                 ~out: out :: OutputConnect):
+  field thd = #false
+  
+  fun decorate(line):
+    line
+
+  method start():
+    thd := thread: process()
+
+  method process():
+    for:
+      each line :~ StringView: in_lines(inp)
+      out.send(decorate(line.to_string()))
+
+class PortSink(~output_port: outp = current_output_port() :: port.OutputPort,
+               ~in: in :: InputConnect):
+  field thd = #false
+  
+  method start():
+    thd := thread: process()
+    
+  method process():
+    for:
+      each ev: in
+      println(ev, outp)
+
+module run:
+  def ch = make_channel()
+  // XXX supervise: check for dead processors
+  def src = PortSource(~out: ChannelOutputConnect(~channel: ch))
+  def snk = PortSink(~in: ChannelInputConnect(~channel: ch))
+  src.start()
+  snk.start()
+  r.sync(r.#{never-evt})
