@@ -2,102 +2,26 @@
 
 import:
   lib("racket/base.rkt") as r
-  lib("syncvar/main.rkt") as syncvar
   rhombus/compat/port
   rhombus/compat/thread:
     expose:
       thread
       Thread
-
-def in_lines = r.#{in-lines}
-def in_producer = r.#{in-producer}
-def channel_put_evt = r.#{channel-put-evt}
-
-interface OutputConnect:
-  method send_ev(val)
-
-  method send(val):
-    r.sync(send_ev(val))
-
-interface InputConnect:
-  extends: Sequenceable
-  method recv_ev()
-
-  method recv():
-    r.sync(recv_ev())
-
-  override method to_sequence():
-    in_producer(fun (): recv())
-
-annot.macro 'Channel':
-  annot_meta.pack_predicate('r.#{channel?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               channel_dot_provider))')
-
-dot.macro 'channel_dot_provider $left . $right':
-  match right
-  | 'in_connect': 'fun (): ChannelInputConnect(~channel: $left)'
-  | 'out_connect': 'fun (): ChannelOutputConnect(~channel: $left)'
-
-fun make_channel() :~ Channel:
-  r.#{make-channel}()
-
-class ChannelInputConnect(~channel: ch :: Channel):
-  implements: InputConnect
-
-  override method recv_ev():
-    ch
-
-class ChannelOutputConnect(~channel: ch :: Channel):
-  implements: OutputConnect
-
-  override method send_ev(val):
-    channel_put_evt(ch, val)
-
-def IVar = syncvar.#{make-ivar}
-
-namespace IVar:
-  export Exn
-  annot.macro 'Exn':
-    annot_meta.pack_predicate('syncvar.#{exn:fail:ivar?}')
-
-annot.macro 'IVar':
-  annot_meta.pack_predicate('syncvar.#{ivar?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               ivar_dot_provider))')
-
-dot.macro 'ivar_dot_provider $left . $right':
-  match right
-  | 'put':     'fun (val): syncvar.#{ivar-put!}($left, val)'
-  | 'try_get': 'fun (): syncvar.#{ivar-try-get}($left)'
-
-def MVar = syncvar.#{make-mvar}
-
-namespace MVar:
-  export update
-  expr.macro 'update($mvar, $val):
-                $body
-                ...':
-    'syncvar.#{mvar-update!}($mvar, fun ($val): $body ...)'
-
-annot.macro 'MVar':
-  annot_meta.pack_predicate('syncvar.#{mvar?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               mvar_dot_provider))')
-
-dot.macro 'mvar_dot_provider $left . $right':
-  match right
-  | 'get': 'fun (): syncvar.#{mvar-get}($left)'
-  | 'swap': 'fun (v): syncvar.#{mvar-swap!}($left, v)'
+  rhombus/compat/time
+  "connector.rhm" open
+  "syncvar.rhm" open
 
 class Processor():
   nonfinal
 
   private field thd :: maybe(Thread) = #false
-  private field stopping_evt :: maybe(IVar) = #false
+  private field stopping_iv :: maybe(IVar) = #false
   private field state :: MVar = MVar(#'stopped)
-  field stopped_evt :: IVar = IVar()
-  field dead_evt :: IVar = IVar()
+  private field stopped_iv :: IVar = IVar()
+  private field dead_iv :: IVar = IVar()
+
+  property stopped_evt :~ Evt: stopped_iv
+  property dead_evt :~ Evt: dead_iv
 
   property current_state:
     state.get()
@@ -110,8 +34,8 @@ class Processor():
 
   method start():
     state_transition(#'stopped, #'starting)
-    stopping_evt := IVar()
-    stopped_evt := IVar()
+    stopping_iv := IVar()
+    stopped_iv := IVar()
     thd := thread:
       try:
         on_start()
@@ -120,11 +44,11 @@ class Processor():
         state_transition(#'running, #'stopping)
         on_stop()
         state_transition(#'stopping, #'stopped)
-        stopped_evt.put(#true)
+        stopped_iv.put(#true)
         ~catch e :: Exn:
           state.swap(#'dead)
           on_dead()
-          dead_evt.put(#true)
+          dead_iv.put(#true)
 
   method stop():
     match current_state
@@ -134,13 +58,12 @@ class Processor():
         stop()
     | #'running:
         try:
-          (stopping_evt :~ IVar).put(#true)
+          (stopping_iv :~ IVar).put(#true)
           ~catch e :: IVar.Exn:
             #void
 
   method process():
-    r.sync(r.#{handle-evt}(stopping_evt, r.void),
-           r.#{handle-evt}(process_evt(), fun (v): on_event(v)))
+    r.sync((stopping_iv :~ Evt).handle_evt(r.void), process_evt())
 
   method on_start():
     #void
@@ -151,54 +74,52 @@ class Processor():
   method on_dead():
     #void
 
-  abstract method process_evt()
-  abstract method on_event(v)
-
-#'here1
+  abstract method process_evt() :~ Evt
 
 class PortSource(~input_port: inp :: port.InputPort = current_input_port(),
                  ~out: out :: OutputConnect):
+  nonfinal
   extends Processor
+  field inp_evt = #false
 
   override method process_evt():
-   inp.readline_evt()
+   unless inp_evt
+   | inp_evt := \
+       (inp.readline_evt() :~ Evt)
+         .wrap_evt(fun (s :~ StringView): s.to_string())
+         .handle_evt(fun(v): on_event(v))
+   inp_evt
 
   method decorate(v):
-    v
+    {#'time: time.now(),
+     #'message: v}
 
   override method on_event(v):
     when v is_a String
     | out.send(decorate(v))
       process()
 
-#'here2
-#//
 class PortSink(~output_port: outp = current_output_port() :: port.OutputPort,
                ~in: in :: InputConnect):
-  field thd = #false
-  field stopping :: IVar = IVar()
+  nonfinal
+  extends Processor
 
-  method start():
-    thd := thread: process()
+  override method process_evt():
+    in.recv_evt().handle_evt(fun(v): on_event(v))
 
-  method stop():
-    stopping.put(#true)
-
-  method process():
-    for:
-      each ev: in
-      println(ev, outp)
-
-#'here3
+  override method on_event(v):
+    println(v, outp)
+    process()
 
 
-#//
 module run:
-  def ch = make_channel()
+  def ch = Channel()
   // XXX supervise: check for dead processors
-  def chout = ch.out_connect()
-  //def src = PortSource(~out: ch.out_connect())
-  //def snk = PortSink(~in: ch.in_connect())
-  //src.start()
-  //snk.start()
-  //r.sync(r.#{never-evt})
+  def src = PortSource(~out: ch.out_connect())
+  def snk = PortSink(~in: ch.in_connect())
+  src.start()
+  snk.start()
+  r.sync((src.dead_evt :~ Evt).handle_evt(fun (v): "src dead"),
+         (snk.dead_evt :~ Evt).handle_evt(fun (v): "snk dead"),
+         (src.stopped_evt :~ Evt).handle_evt(fun (v): "src stopped"),
+         (snk.stopped_evt :~ Evt).handle_evt(fun (v): "snk stopped"))
