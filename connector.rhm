@@ -2,37 +2,13 @@
 
 import:
   lib("racket/base.rkt") as r
+  "evt.rhm" open
 
 export:
-  Evt
-  Channel
   InputConnect
   OutputConnect
-
-annot.macro 'Channel':
-  annot_meta.pack_predicate('r.#{channel?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               channel_dot_provider))')
-
-dot.macro 'channel_dot_provider $left . $right':
-  match right
-  | 'in_connect': 'fun (): ChannelInputConnect(~channel: $left)'
-  | 'out_connect': 'fun (): ChannelOutputConnect(~channel: $left)'
-
-annot.macro 'Evt':
-  annot_meta.pack_predicate('r.#{evt?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               evt_dot_provider))')
-
-dot.macro 'evt_dot_provider $left . $right':
-  match right
-  | 'handle_evt': 'fun (f) :~ Evt: r.#{handle-evt}($left, f)'
-  | 'wrap_evt': 'fun (f) :~ Evt: r.#{wrap-evt}($left, f)'
-
-fun Channel() :~ Channel:
-  r.#{make-channel}()
-
-def channel_put_evt = r.#{channel-put-evt}
+  ChannelInputConnect
+  ChannelOutputConnect
 
 interface OutputConnect:
   method send_evt(val) :~ Evt
@@ -46,14 +22,14 @@ interface InputConnect:
   method recv():
     r.sync(recv_evt())
 
-class ChannelInputConnect(~channel: ch :: Channel):
+class ChannelInputConnect(ch :: Channel):
   implements: InputConnect
 
   override method recv_evt():
     ch
 
-class ChannelOutputConnect(~channel: ch :: Channel):
+class ChannelOutputConnect(ch :: Channel):
   implements: OutputConnect
 
   override method send_evt(val):
-    channel_put_evt(ch, val)
+    ch.put_evt(val)

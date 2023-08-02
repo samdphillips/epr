@@ -1,0 +1,18 @@
+#lang rhombus/static
+
+import:
+  lib("racket/base.rkt") as r
+  "connector.rhm" open
+  "evt.rhm" open
+  "port_processor.rhm" open
+  "supervise.rhm" open
+
+def ch = Channel()
+def src = PortSource(~out: ChannelOutputConnect(ch))
+def snk = PortSink(~in: ChannelInputConnect(ch))
+def sup = Supervisor([src, snk])
+sup.start()
+r.sleep(5)
+sup.stop()
+r.sync(sup.stopped_evt)
+#'end

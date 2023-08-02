@@ -1,0 +1,34 @@
+#lang rhombus/static/and_meta
+
+import:
+  lib("racket/base.rkt") as r
+
+export:
+  Evt
+  Channel
+  evt_dot_provider
+
+annot.macro 'Channel':
+  annot_meta.pack_predicate('r.#{channel?}',
+                            '(($(statinfo_meta.dot_provider_key),
+                               channel_dot_provider))')
+
+dot.macro 'channel_dot_provider $left . $right':
+  match right
+  | 'put_evt': 'fun (v): r.#{channel-put-evt}($left, v)'
+  | _: #false
+
+annot.macro 'Evt':
+  annot_meta.pack_predicate('r.#{evt?}',
+                            '(($(statinfo_meta.dot_provider_key),
+                               evt_dot_provider))')
+
+dot.macro 'evt_dot_provider $left . $right':
+  match right
+  | 'handle_evt': 'fun (f) :~ Evt: r.#{handle-evt}($left, f)'
+  | 'wrap_evt': 'fun (f) :~ Evt: r.#{wrap-evt}($left, f)'
+  | _: #false
+
+fun Channel() :~ Channel:
+  r.#{make-channel}()
+

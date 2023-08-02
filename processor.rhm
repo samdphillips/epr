@@ -2,124 +2,18 @@
 
 import:
   lib("racket/base.rkt") as r
-  rhombus/compat/port
-  rhombus/compat/thread:
-    expose:
-      thread
-      Thread
-  rhombus/compat/time
-  "connector.rhm" open
-  "syncvar.rhm" open
+  "evt.rhm" open
+  "supervise.rhm" open
+
+export:
+  Processor
 
 class Processor():
+  extends Supervisable
   nonfinal
-
-  private field thd :: maybe(Thread) = #false
-  private field stopping_iv :: maybe(IVar) = #false
-  private field state :: MVar = MVar(#'stopped)
-  private field stopped_iv :: IVar = IVar()
-  private field dead_iv :: IVar = IVar()
-
-  property stopped_evt :~ Evt: stopped_iv
-  property dead_evt :~ Evt: dead_iv
-
-  property current_state:
-    state.get()
-
-  private method state_transition(old, new):
-    MVar.update(state, v):
-      if v == old
-      | new
-      | error("processor cannot transition from " +& old +& " to " +& new)
-
-  method start():
-    state_transition(#'stopped, #'starting)
-    stopping_iv := IVar()
-    stopped_iv := IVar()
-    thd := thread:
-      try:
-        on_start()
-        state_transition(#'starting, #'running)
-        process()
-        state_transition(#'running, #'stopping)
-        on_stop()
-        state_transition(#'stopping, #'stopped)
-        stopped_iv.put(#true)
-        ~catch e :: Exn:
-          state.swap(#'dead)
-          on_dead()
-          dead_iv.put(#true)
-
-  method stop():
-    match current_state
-    | #'stopped || #'stopping || #'dead: #void
-    | #'starting:
-        r.sleep(0.5)
-        stop()
-    | #'running:
-        try:
-          (stopping_iv :~ IVar).put(#true)
-          ~catch e :: IVar.Exn:
-            #void
-
-  method process():
-    r.sync((stopping_iv :~ Evt).handle_evt(r.void), process_evt())
-
-  method on_start():
-    #void
-
-  method on_stop():
-    #void
-
-  method on_dead():
-    #void
 
   abstract method process_evt() :~ Evt
 
-class PortSource(~input_port: inp :: port.InputPort = current_input_port(),
-                 ~out: out :: OutputConnect):
-  nonfinal
-  extends Processor
-  field inp_evt = #false
-
-  override method process_evt():
-   unless inp_evt
-   | inp_evt := \
-       (inp.readline_evt() :~ Evt)
-         .wrap_evt(fun (s :~ StringView): s.to_string())
-         .handle_evt(fun(v): on_event(v))
-   inp_evt
-
-  method decorate(v):
-    {#'time: time.now(),
-     #'message: v}
-
-  override method on_event(v):
-    when v is_a String
-    | out.send(decorate(v))
-      process()
-
-class PortSink(~output_port: outp = current_output_port() :: port.OutputPort,
-               ~in: in :: InputConnect):
-  nonfinal
-  extends Processor
-
-  override method process_evt():
-    in.recv_evt().handle_evt(fun(v): on_event(v))
-
-  override method on_event(v):
-    println(v, outp)
-    process()
-
-
-module run:
-  def ch = Channel()
-  // XXX supervise: check for dead processors
-  def src = PortSource(~out: ch.out_connect())
-  def snk = PortSink(~in: ch.in_connect())
-  src.start()
-  snk.start()
-  r.sync((src.dead_evt :~ Evt).handle_evt(fun (v): "src dead"),
-         (snk.dead_evt :~ Evt).handle_evt(fun (v): "snk dead"),
-         (src.stopped_evt :~ Evt).handle_evt(fun (v): "src stopped"),
-         (snk.stopped_evt :~ Evt).handle_evt(fun (v): "snk stopped"))
+  override method process():
+    r.sync(stopping_evt.handle_evt(r.void),
+           process_evt())

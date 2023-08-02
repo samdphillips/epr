@@ -1,0 +1,110 @@
+#lang rhombus/static
+
+import:
+  lib("racket/base.rkt"):
+    only:
+      sleep
+      sync
+    open
+  rhombus/compat/thread:
+    expose:
+      Thread
+      thread
+  "evt.rhm" open
+  "logging.rhm" open
+  "syncvar.rhm" open
+
+export:
+  Supervisable
+  Supervisor
+
+class Supervisable():
+  nonfinal
+
+  private field thd :: maybe(Thread) = #false
+  private field stopping_iv :: maybe(IVar) = #false
+  private field state :: MVar = MVar(#'stopped)
+  private field stopped_iv :: IVar = IVar()
+  private field dead_iv :: IVar = IVar()
+
+  property stopping_evt :~ Evt: stopping_iv
+  property stopped_evt :~ Evt: stopped_iv
+  property dead_evt :~ Evt: dead_iv
+
+  property current_state:
+    state.get()
+
+  private method state_transition(old, new):
+    MVar.update(state, v):
+      if v == old
+      | new
+      | error("processor cannot transition from " +& old +& " to " +& new)
+
+  method start():
+    state_transition(#'stopped, #'starting)
+    stopping_iv := IVar()
+    stopped_iv := IVar()
+    thd := thread:
+      try:
+        on_start()
+        state_transition(#'starting, #'running)
+        process()
+        state_transition(#'running, #'stopping)
+        on_stop()
+        state_transition(#'stopping, #'stopped)
+        stopped_iv.put(#void)
+        ~catch e :: Exn:
+          state.swap(#'dead)
+          on_dead()
+          dead_iv.put(#void)
+
+  method stop():
+    match current_state
+    | #'stopped || #'stopping || #'dead: #void
+    | #'starting:
+        sleep(0.5)
+        stop()
+    | #'running:
+        try:
+          (stopping_iv :~ IVar).put(#void)
+          ~catch e :: IVar.Exn:
+            #void
+
+  method on_start():
+    #void
+
+  method on_stop():
+    #void
+
+  method on_dead():
+    #void
+
+  abstract method process()
+
+
+def_logger log ~topic: #'supervisor
+
+class Supervisor(children :: List.of(Supervisable)):
+  extends Supervisable
+
+  override method on_start():
+    log.info("starting children")
+    for:
+      each ch: children
+      ch.start()
+    log.info("children started")
+
+  override method process():
+    sync(stopping_evt)
+
+  private method wait_for_children():
+    for:
+      each ch: children
+      log.info("waiting for ~a", ch)
+      sync(ch.stopped_evt)
+
+  override method on_stop():
+    for:
+      each ch: children
+      ch.stop()
+    wait_for_children()
