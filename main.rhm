@@ -2,8 +2,10 @@
 
 import:
   lib("racket/base.rkt") as r
+  rhombus/compat/thread:
+    expose:
+      Channel
   "connector.rhm" open
-  "evt.rhm" open
   "port_processor.rhm" open
   "supervise.rhm" open
 

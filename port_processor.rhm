@@ -2,9 +2,12 @@
 
 import:
   rhombus/compat/port
+  rhombus/compat/thread:
+    expose:
+      Evt
   rhombus/compat/time
   "connector.rhm" open
-  "evt.rhm" open
+  // "evt.rhm" open
   "processor.rhm" open
 
 export:
@@ -13,7 +16,7 @@ export:
 
 // XXX de/serialize events from port?
 
-class PortSource(~input_port: inp :: port.InputPort = current_input_port(),
+class PortSource(~input_port: inp :: port.InputPort = Port.current_input(),
                  ~out: out :: OutputConnect):
   nonfinal
   extends Processor
@@ -23,8 +26,8 @@ class PortSource(~input_port: inp :: port.InputPort = current_input_port(),
    unless inp_evt
    | inp_evt := \
        (inp.readline_evt() :~ Evt)
-         .wrap_evt(fun (s :~ StringView): s.to_string())
-         .handle_evt(fun(v): on_event(v))
+         .wrap(fun (s :~ StringView): s.to_string())
+         .handle(fun(v): on_event(v))
    inp_evt
 
   method decorate(v):
@@ -36,13 +39,13 @@ class PortSource(~input_port: inp :: port.InputPort = current_input_port(),
     | out.send(decorate(v))
       process()
 
-class PortSink(~output_port: outp = current_output_port() :: port.OutputPort,
+class PortSink(~output_port: outp :: port.OutputPort = Port.current_output(),
                ~in: in :: InputConnect):
   nonfinal
   extends Processor
 
   override method process_evt():
-    in.recv_evt().handle_evt(fun(v): on_event(v))
+    in.recv_evt().handle(fun(v): on_event(v))
 
   method on_event(v):
     println(v, outp)

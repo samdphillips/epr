@@ -6,12 +6,8 @@ import:
       sleep
       sync
     open
-  rhombus/compat/thread:
-    expose:
-      Thread
-      thread
-  "evt.rhm" open
-  "logging.rhm" open
+  rhombus/compat/thread open
+  rhombus/compat/logging open
   "syncvar.rhm" open
 
 export:

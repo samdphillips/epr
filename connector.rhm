@@ -2,7 +2,10 @@
 
 import:
   lib("racket/base.rkt") as r
-  "evt.rhm" open
+  rhombus/compat/thread:
+    expose:
+      Channel
+      Evt
 
 export:
   InputConnect
