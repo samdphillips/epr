@@ -96,7 +96,7 @@ class Supervisor(children :: List.of(Supervisable)):
   private method wait_for_children():
     for:
       each ch: children
-      log.info("waiting for ~a", ch)
+      log.info("waiting for exit of ~a", ch)
       sync(ch.stopped_evt)
 
   override method on_stop():

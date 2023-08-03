@@ -14,7 +14,9 @@ def src = PortSource(~out: ChannelOutputConnect(ch))
 def snk = PortSink(~in: ChannelInputConnect(ch))
 def sup = Supervisor([src, snk])
 sup.start()
-r.sleep(5)
-sup.stop()
-r.sync(sup.stopped_evt)
-#'end
+
+try:
+  r.sync(r.#{never-evt})
+  ~catch e :: Exn.Break:
+    sup.stop()
+    r.sync(sup.stopped_evt)
