@@ -6,15 +6,21 @@ import:
     expose:
       Channel
   "json.rhm"
+  "pipe.rhm"
   "connector.rhm" open
   "port_processor.rhm" open
   "supervise.rhm" open
 
-def ch = Channel()
-def src = PortSource(~out: ChannelOutputConnect(ch))
-def snk = PortSink(~in: ChannelInputConnect(ch),
+def a_ch = Channel()
+def b_ch = Channel()
+
+def src = PortSource(~out: ChannelOutputConnect(a_ch))
+def annot_time = pipe.TimePipe(~in: ChannelInputConnect(a_ch),
+                               ~out: ChannelOutputConnect(b_ch))
+def snk = PortSink(~in: ChannelInputConnect(b_ch),
                    ~serializer: json.JsonSerializer())
-def sup = Supervisor([src, snk])
+
+def sup = Supervisor([src, annot_time, snk])
 sup.start()
 
 try:

@@ -5,7 +5,6 @@ import:
   rhombus/compat/thread:
     expose:
       Evt
-  rhombus/compat/time
   "connector.rhm" open
   "processor.rhm" open
   "serde.rhm"
@@ -37,8 +36,7 @@ class PortSource(~input_port: inp :: port.InputPort = Port.current_input(),
    inp_evt
 
   method decorate(v):
-    {#'time: time.now(),
-     #'message: v}
+    {#'message: v}
 
   method on_event(v):
     when v is_a String

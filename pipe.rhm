@@ -1,0 +1,23 @@
+#lang rhombus/static
+
+import:
+  rhombus/compat/time
+  "connector.rhm" open
+  "processor.rhm" open
+
+export:
+  TimePipe
+
+class TimePipe(~in: in :: InputConnect,
+               ~out: out :: OutputConnect,
+               ~tag: tag = #'time :: Symbol):
+  extends Processor
+
+  override method process_evt():
+    in.recv_evt().handle(fun (val): on_event(val))
+
+  method on_event(val :~ Map):
+    out.send(val ++ {tag: time.now()})
+    process()
+
+    
