@@ -5,18 +5,21 @@ import:
   rhombus/compat/thread:
     expose:
       Channel
+  "json.rhm"
   "connector.rhm" open
   "port_processor.rhm" open
   "supervise.rhm" open
 
 def ch = Channel()
 def src = PortSource(~out: ChannelOutputConnect(ch))
-def snk = PortSink(~in: ChannelInputConnect(ch))
+def snk = PortSink(~in: ChannelInputConnect(ch),
+                   ~serializer: json.JsonSerializer())
 def sup = Supervisor([src, snk])
 sup.start()
 
 try:
   r.sync(r.#{never-evt})
   ~catch e :: Exn.Break:
-    sup.stop()
-    r.sync(sup.stopped_evt)
+    #void
+sup.stop()
+r.sync(sup.stopped_evt)

@@ -1,0 +1,18 @@
+#lang rhombus/static
+
+import:
+  lib("json/main.rkt"):
+    as json
+    rename:
+      #{write-json} as write
+  "serde.rhm"
+
+export:
+  JsonSerializer
+
+class JsonSerializer():
+  implements serde.Serializer
+
+  override method serialize(val, out_port :: Port.Output):
+    json.write(val, out_port)
+    println("", out_port)

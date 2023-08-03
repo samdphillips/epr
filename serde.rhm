@@ -1,0 +1,11 @@
+#lang rhombus/static
+
+export:
+  Serializer
+  Deserializer
+
+interface Serializer:
+  method serialize(val, out_port :: Port.Output)
+
+interface Deserializer:
+  method deserialize(in_port :: Port.Input)
