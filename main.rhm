@@ -1,10 +1,10 @@
 #lang rhombus/static
 
 import:
-  lib("racket/base.rkt") as r
   rhombus/compat/thread:
-    expose:
-      Channel
+    only Channel
+    open
+  rhombus/thread open
   "json.rhm"
   "pipe.rhm"
   "connector.rhm" open
@@ -24,8 +24,8 @@ def sup = Supervisor([src, annot_time, snk])
 sup.start()
 
 try:
-  r.sync(r.#{never-evt})
+  Evt.never.sync(~enable_break: #true)
   ~catch e :: Exn.Break:
     #void
 sup.stop()
-r.sync(sup.stopped_evt)
+Evt.sync(sup.stopped_evt)

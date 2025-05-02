@@ -1,7 +1,7 @@
 #lang rhombus/static
 
 import:
-  rhombus/compat/port
+  lib("racket/port.rkt")
   rhombus/compat/thread:
     expose:
       Evt
@@ -17,22 +17,25 @@ export:
 class PrintSerializer():
   implements serde.Serializer
 
-  override method serialize(val, out_port :: port.OutputPort):
+  override method serialize(val, out_port :: Port.Output):
     println(val, out_port)
+    out_port.flush()
 
 
-class PortSource(~input_port: inp :: port.InputPort = Port.current_input(),
+class PortSource(~input_port: inp :: Port.Input = Port.Input.current(),
                  ~out: out :: OutputConnect):
   nonfinal
   extends Processor
   field inp_evt = #false
 
+  def read_bytes_line_evt = port.#{read-bytes-line-evt}
+
   override method process_evt():
    unless inp_evt
-   | inp_evt := \
-       (inp.readline_evt() :~ Evt)
-         .wrap(fun (s :~ StringView): s.to_string())
-         .handle(fun(v): on_event(v))
+   | inp_evt
+       := (read_bytes_line_evt(inp) :~ Evt)
+       .wrap(fun (s :~ ReadableString): s.to_string())
+       .handle(fun(v): on_event(v))
    inp_evt
 
   method decorate(v):
@@ -43,7 +46,7 @@ class PortSource(~input_port: inp :: port.InputPort = Port.current_input(),
     | out.send(decorate(v))
       process()
 
-class PortSink(~output_port: out_port :: port.OutputPort = Port.current_output(),
+class PortSink(~output_port: out_port :: Port.Output = Port.Output.current(),
                ~serializer: serializer :: serde.Serializer = PrintSerializer(),
                ~in: in :: InputConnect):
   nonfinal
