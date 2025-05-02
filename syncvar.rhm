@@ -2,43 +2,45 @@
 
 import:
   lib("syncvar/main.rkt") as syncvar
+  lib("rhombus/private/amalgam.rkt")!evt
 
 export:
   IVar
   MVar
 
-def IVar = syncvar.#{make-ivar}
+class IVar(_handle):
+  implements evt.Evt
 
-namespace IVar:
+  constructor ():
+    super(syncvar.#{make-ivar}())
+
+  override property handle: _handle
+
   export Exn
-  annot.macro 'Exn':
-    annot_meta.pack_predicate('syncvar.#{exn:fail:ivar?}')
+  annot.macro 'Exn': 'satisfying(syncvar.#{exn:fail:ivar?})'
 
-annot.macro 'IVar':
-  annot_meta.pack_predicate('syncvar.#{ivar?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               ivar_dot_provider))')
+  method put(val):
+    syncvar.#{ivar-put!}(handle, val)
 
-dot.macro 'ivar_dot_provider $left . $right':
-  match right
-  | 'put':     'fun (val): syncvar.#{ivar-put!}($left, val)'
-  | 'try_get': 'fun (): syncvar.#{ivar-try-get}($left)'
+  method try_get():
+    syncvar.#{ivar-try-get}(handle)
 
-def MVar = syncvar.#{make-mvar}
 
-namespace MVar:
+class MVar(handle):
+  constructor
+  | ():
+      super(syncvar.#{make-mvar}())
+  | (initial_value):
+      super(syncvar.#{make-mvar}(initial_value))
+
   export update
   expr.macro 'update($mvar, $val):
                 $body
                 ...':
-    'syncvar.#{mvar-update!}($mvar, fun ($val): $body ...)'
+    'syncvar.#{mvar-update!}(($mvar :: MVar).handle, fun ($val): $body ...)'
 
-annot.macro 'MVar':
-  annot_meta.pack_predicate('syncvar.#{mvar?}',
-                            '(($(statinfo_meta.dot_provider_key),
-                               mvar_dot_provider))')
+  method get():
+    syncvar.#{mvar-get}(handle)
 
-dot.macro 'mvar_dot_provider $left . $right':
-  match right
-  | 'get': 'fun (): syncvar.#{mvar-get}($left)'
-  | 'swap': 'fun (v): syncvar.#{mvar-swap!}($left, v)'
+  method swap(new_value):
+    syncvar.#{mvar-swap!}(handle, new_value)
