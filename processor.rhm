@@ -1,10 +1,7 @@
 #lang rhombus/static/and_meta
 
 import:
-  lib("racket/base.rkt") as r
-  rhombus/compat/thread:
-    expose:
-      Evt
+  rhombus/thread open
   "supervise.rhm" open
 
 export:
@@ -17,5 +14,5 @@ class Processor():
   abstract method process_evt() :~ Evt
 
   override method process():
-    r.sync(stopping_evt.handle(r.void),
-           process_evt())
+    Evt.sync(stopping_evt.wrap(Function.pass),
+             process_evt())

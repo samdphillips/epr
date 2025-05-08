@@ -1,15 +1,15 @@
 #lang rhombus/static
 
 import:
-  rhombus/compat/thread:
-    only Channel
-    open
+  rhombus/compat/logging open
   rhombus/thread open
   "json.rhm"
   "pipe.rhm"
   "connector.rhm" open
   "port_processor.rhm" open
   "supervise.rhm" open
+
+def_logger log ~topic: #'epr
 
 def a_ch = Channel()
 def b_ch = Channel()
@@ -23,9 +23,14 @@ def snk = PortSink(~in: ChannelInputConnect(b_ch),
 def sup = Supervisor([src, annot_time, snk])
 sup.start()
 
-try:
-  Evt.never.sync(~enable_break: #true)
-  ~catch e :: Exn.Break:
-    #void
-sup.stop()
-Evt.sync(sup.stopped_evt)
+def do_cleanup:
+  try:
+    sup.dead_evt.sync(~enable_break: #true)
+    #false
+    ~catch e :: Exn.Break:
+      log.info("breakin")
+      #true
+
+when do_cleanup
+| sup.stop()
+  Evt.sync(sup.stopped_evt)

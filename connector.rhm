@@ -1,11 +1,7 @@
 #lang rhombus/static/and_meta
 
 import:
-  lib("racket/base.rkt") as r
-  rhombus/compat/thread:
-    expose:
-      Channel
-      Evt
+  rhombus/thread open
 
 export:
   InputConnect
@@ -17,22 +13,22 @@ interface OutputConnect:
   method send_evt(val) :~ Evt
 
   method send(val):
-    r.sync(send_evt(val))
+    send_evt(val).sync()
 
 interface InputConnect:
   method recv_evt() :~ Evt
 
   method recv():
-    r.sync(recv_evt())
+    recv_evt().sync()
 
 class ChannelInputConnect(ch :: Channel):
   implements: InputConnect
 
-  override method recv_evt():
+  override method recv_evt() :~ Evt:
     ch
 
 class ChannelOutputConnect(ch :: Channel):
   implements: OutputConnect
 
-  override method send_evt(val):
+  override method send_evt(val) :~ Evt:
     ch.put_evt(val)

@@ -1,18 +1,17 @@
 #lang rhombus/static
 
 import:
-  lib("racket/base.rkt"):
-    only:
-      sleep
-      sync
-    open
-  rhombus/compat/thread open
+  rhombus/thread open
   rhombus/compat/logging open
   "syncvar.rhm" open
 
 export:
   Supervisable
   Supervisor
+
+
+def_logger log ~topic: #'supervisor
+
 
 class Supervisable():
   nonfinal
@@ -33,13 +32,15 @@ class Supervisable():
   private method state_transition(old, new):
     MVar.update(state, v):
       if v == old
-      | new
-      | error("processor cannot transition from " +& old +& " to " +& new)
+      | log.info(@str{@name transition @old -> @new})
+        new
+      | error(@str{processor cannot transition from @old to @new})
 
   method start():
     state_transition(#'stopped, #'starting)
     stopping_iv := IVar()
     stopped_iv := IVar()
+    log.info(@str{starting @name})
     thd := thread:
       try:
         on_start()
@@ -50,15 +51,18 @@ class Supervisable():
         state_transition(#'stopping, #'stopped)
         stopped_iv.put(#void)
         ~catch e :: Exn:
+          log.error(@str{@name dead})
+          log.error(to_string(e))
           state.swap(#'dead)
           on_dead()
           dead_iv.put(#void)
 
   method stop():
+    log.info(@str{sending stop to @name, current_state = @current_state})
     match current_state
     | #'stopped || #'stopping || #'dead: #void
     | #'starting:
-        sleep(0.5)
+        Thread.sleep(0.5)
         stop()
     | #'running:
         try:
@@ -75,13 +79,15 @@ class Supervisable():
   method on_dead():
     #void
 
+  abstract property name
+
   abstract method process()
 
 
-def_logger log ~topic: #'supervisor
-
 class Supervisor(children :: List.of(Supervisable)):
   extends Supervisable
+
+  override property name: #'supervisor
 
   override method on_start():
     log.info("starting children")
@@ -91,13 +97,13 @@ class Supervisor(children :: List.of(Supervisable)):
     log.info("children started")
 
   override method process():
-    sync(stopping_evt)
+    stopping_evt.sync()
 
   private method wait_for_children():
     for:
       each ch: children
-      log.info("waiting for exit of ~a", ch)
-      sync(ch.stopped_evt)
+      log.info(@str{waiting for exit of @ch})
+      Evt.sync(ch.stopped_evt, ch.dead_evt)
 
   override method on_stop():
     for:

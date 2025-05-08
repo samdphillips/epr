@@ -2,9 +2,8 @@
 
 import:
   lib("racket/port.rkt")
-  rhombus/compat/thread:
-    expose:
-      Evt
+  lib("rhombus/private/amalgam.rkt")!evt
+  rhombus/thread
   "connector.rhm" open
   "processor.rhm" open
   "serde.rhm"
@@ -22,20 +21,31 @@ class PrintSerializer():
     out_port.flush()
 
 
+class ReadBytesLineEvt(hand):
+  implements evt.Evt
+  opaque
+
+  constructor (inp :: Port.Input):
+    super(port.#{read-bytes-line-evt}(inp))
+
+  override property handle: hand
+
+
 class PortSource(~input_port: inp :: Port.Input = Port.Input.current(),
                  ~out: out :: OutputConnect):
   nonfinal
   extends Processor
   field inp_evt = #false
 
-  def read_bytes_line_evt = port.#{read-bytes-line-evt}
+  override property name: #'port_source
 
   override method process_evt():
    unless inp_evt
    | inp_evt
-       := (read_bytes_line_evt(inp) :~ Evt)
-       .wrap(fun (s :~ ReadableString): s.to_string())
-       .handle(fun(v): on_event(v))
+       := ReadBytesLineEvt(inp)
+       .wrap(~tail_call: #true,
+             fun (bs :: Bytes):
+               on_event(bs.utf8_string()))
    inp_evt
 
   method decorate(v):
@@ -52,8 +62,10 @@ class PortSink(~output_port: out_port :: Port.Output = Port.Output.current(),
   nonfinal
   extends Processor
 
+  override property name: #'port_sink
+
   override method process_evt():
-    in.recv_evt().handle(fun(v): on_event(v))
+    in.recv_evt().wrap(~tail_call: #true, fun(v): on_event(v))
 
   method on_event(val):
     serializer.serialize(val, out_port)

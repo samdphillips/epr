@@ -13,11 +13,11 @@ class TimePipe(~in: in :: InputConnect,
                ~tag: tag = #'time :: Symbol):
   extends Processor
 
+  override property name: #'time_pipe
+
   override method process_evt():
-    in.recv_evt().handle(fun (val): on_event(val))
+    in.recv_evt().wrap(~tail_call: #true, fun (val): on_event(val))
 
   method on_event(val :~ Map):
     out.send(val ++ {tag: time.now()})
     process()
-
-    
